@@ -1,17 +1,23 @@
+# --- CRITICAL: Fix import path for Streamlit ---
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-"""
-Main Streamlit Dashboard - Trading Performance Analytics
-"""
+# Add the project root to Python's module search path.
+# This ensures 'app' can be imported regardless of the working directory.
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
+# Now all imports from app.* will work.
+# -------------------------------------------------
 
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots  # <-- Added this for the inline monthly chart
 
-# Import local modules
+# Import local modules (now all inside app/)
 from app.dashboard import config
 from app.dashboard import db
 from app.dashboard import metrics
@@ -118,15 +124,18 @@ with st.sidebar:
     instrument_types = st.multiselect(
         "Instrument Type",
         options=filter_options["instrument_types"],
-        default=["All"],
+        default=filter_options["instrument_types"], # Selects all available options
         help="Select one or more instrument types"
     )
 
+   # Get the list and add "All" to the front
+    sessions_options = ["All"] + filter_options["sessions"]
+
     sessions = st.multiselect(
-        "Session",
-        options=filter_options["sessions"],
+        "Sessions",
+        options=sessions_options,
         default=["All"],
-        help="Trading session filter"
+        help="Select one or more sessions"
     )
 
     symbols = st.multiselect(
@@ -384,8 +393,68 @@ with tab3:
     fig_heat = charts.heatmap_winrate(df, metric)
     st.plotly_chart(fig_heat, use_container_width=True)
 
+# ==========================================
+# 🟢 FIX APPLIED HERE: Inline monthly performance chart
+# ==========================================
 with tab4:
-    fig_month = charts.monthly_performance(df)
+    # 1. Work on a safe copy of the dataframe
+    monthly_df = df.copy()
+
+    # 2. CREATE THE 'month' COLUMN (Fixes the line 407 error)
+    # We convert 'entry_time' to a year-month string so we can group by it.
+    if 'entry_time' in monthly_df.columns:
+        monthly_df['month'] = pd.to_datetime(monthly_df['entry_time']).dt.strftime('%Y-%m')
+    elif 'month' not in monthly_df.columns:
+        st.error("Data must contain 'entry_time' or 'month' column for monthly analysis.")
+        st.stop()
+
+    # 3. Create the 'is_win' flag
+    monthly_df['is_win'] = (monthly_df['profit'] > 0).astype(int)
+
+    # 4. Aggregate by month (This is the line that was failing)
+    monthly = monthly_df.groupby('month').agg({
+        'profit': 'sum',
+        'ticket_id': 'count',
+        'is_win': 'sum'
+    }).reset_index()
+
+    # 5. Calculate win rate and handle division by zero
+    monthly['win_rate'] = monthly['is_win'] / monthly['ticket_id']
+    monthly['win_rate'] = monthly['win_rate'].fillna(0)
+
+    # 6. Rename columns to match chart expectations
+    monthly = monthly[['month', 'profit', 'ticket_id', 'win_rate']]
+    monthly.columns = ["month", "pnL", "trades", "win_rate"]
+
+    # 7. Build the Plotly Figure using make_subplots for dual axes
+    fig_month = make_subplots(specs=[[{"secondary_y": True}]])
+
+    fig_month.add_trace(
+        go.Bar(x=monthly['month'], y=monthly['pnL'], name='Net P&L'),
+        secondary_y=False,
+    )
+
+    fig_month.add_trace(
+        go.Scatter(
+            x=monthly['month'], 
+            y=monthly['win_rate'] * 100, 
+            name='Win Rate (%)', 
+            mode='lines+markers', 
+            line=dict(color='#ff4444')
+        ),
+        secondary_y=True,
+    )
+
+    # 8. Final styling
+    fig_month.update_layout(
+        title="Monthly Performance",
+        xaxis_title="Month",
+        yaxis_title="Net P&L ($)",
+        yaxis2_title="Win Rate (%)",
+        legend=dict(x=0.5, y=-0.2, xanchor='center', orientation='h'),
+        template="plotly_dark"
+    )
+    
     st.plotly_chart(fig_month, use_container_width=True)
 
 # --- 5. Distribution Section ---
@@ -414,11 +483,18 @@ with col1:
 
 with col2:
     if "slippage" in df.columns:
+        # Calculate average slippage per instrument type
         avg_slip = df.groupby("instrument_type")["slippage"].mean().reset_index()
-        fig_avg_slip = charts.pnl_by_category(
-            avg_slip.rename(columns={"slippage": "profit"}),
-            "instrument_type",
-            "Average Slippage"
+
+        # Create an inline Plotly bar chart (bypassing the broken charts.pnl_by_category function)
+        fig_avg_slip = go.Figure(
+            data=[go.Bar(x=avg_slip['instrument_type'], y=avg_slip['slippage'])]
+        )
+        fig_avg_slip.update_layout(
+            title="Average Slippage by Instrument",
+            xaxis_title="Instrument",
+            yaxis_title="Avg Slippage",
+            template="plotly_dark"
         )
         st.plotly_chart(fig_avg_slip, use_container_width=True)
 

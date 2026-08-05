@@ -305,7 +305,22 @@ def monthly_performance(df):
         "ticket_id": "count",
         "profit": lambda x: (x > 0).mean()
     }).reset_index()
-    monthly.columns = ["month", "pnl", "trades", "win_rate"]
+        # 1. Create a 'is_win' column first (assuming profit > 0 means a win)
+    df['is_win'] = (df['profit'] > 0).astype(int)
+
+    # 2. Group by month and calculate the 3 required metrics
+    monthly = df.groupby('month').agg({
+        'profit': 'sum',     # Total profit
+        'ticket_id': 'count',# Number of trades
+        'is_win': 'sum'      # Number of winning trades
+    }).reset_index()
+
+    # 3. Now calculate the win_rate (Winning Trades / Total Trades)
+    monthly['win_rate'] = monthly['is_win'] / monthly['ticket_id']
+
+    # 4. Select only the columns we need and rename them correctly
+    monthly = monthly[['month', 'profit', 'ticket_id', 'win_rate']]
+    monthly.columns = ["month", "pnL", "trades", "win_rate"]
     monthly["win_rate"] = monthly["win_rate"] * 100
     monthly["color"] = monthly["pnl"].apply(lambda x: COLORS["positive"] if x > 0 else COLORS["negative"])
 
