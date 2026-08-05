@@ -11,3 +11,6 @@ pandas>=2.2.0
 numpy>=1.26.2
 plotly>=5.18.0
 httpx>=0.25.2
+# Add to your existing requirements.txt
+plotly>=5.18.0
+scipy>=1.11.0
