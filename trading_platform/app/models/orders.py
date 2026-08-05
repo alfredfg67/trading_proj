@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, Enum
 from sqlalchemy.sql import func
 from app.core.database import Base
+from sqlalchemy.orm import relationship
 import enum
 
 class OrderStatus(str, enum.Enum):
@@ -16,5 +17,6 @@ class Order(Base):
     quantity = Column(Float, nullable=False)
     price = Column(Float, nullable=False)
     status = Column(Enum(OrderStatus), default=OrderStatus.PENDING)
+    trades = relationship("Trade", backref="order", lazy="select")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
