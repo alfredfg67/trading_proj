@@ -1,11 +1,24 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
-from app.services.analytics import compute_metrics
+from app.dal import DatabaseService
 
 router = APIRouter()
 
 @router.get("/")
 async def get_stats(db: AsyncSession = Depends(get_db)):
-    metrics = await compute_metrics(db)
-    return metrics
+    service = DatabaseService(db)
+    metrics = await service.trades.get_trade_metrics()
+    win_rate = await service.trades.get_win_rate()
+    profit_factor = await service.trades.get_profit_factor()
+    drawdown = await service.analytics.get_max_drawdown()
+
+    return {
+        "trade_count": metrics.get("total_trades", 0),
+        "total_profit": metrics.get("total_profit", 0),
+        "avg_profit": metrics.get("avg_profit", 0),
+        "win_rate": win_rate * 100,
+        "profit_factor": profit_factor,
+        "max_drawdown": drawdown.get("max_drawdown", 0),
+        "total_volume": metrics.get("total_volume", 0),
+    }

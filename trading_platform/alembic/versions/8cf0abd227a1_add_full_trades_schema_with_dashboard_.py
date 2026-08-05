@@ -97,3 +97,5 @@ op.create_table(
     sa.PrimaryKeyConstraint('id'),
 )
 op.create_index('ix_orders_id', 'orders', ['id'], unique=False)
+# inside your migration
+op.add_column('orders', sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP')))
