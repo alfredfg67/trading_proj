@@ -7,10 +7,10 @@ from app.services.order_processor import start_worker
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create tables on startup
+    # Create tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    # Start the background worker
+    # Start background worker
     asyncio.create_task(start_worker())
     yield
 

@@ -18,5 +18,7 @@ class Order(Base):
     price = Column(Float, nullable=False)
     status = Column(Enum(OrderStatus), default=OrderStatus.PENDING)
     trades = relationship("Trade", backref="order", lazy="select")
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    from datetime import datetime
+    # ... inside your Order model class ...
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
