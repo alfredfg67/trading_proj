@@ -1,6 +1,3 @@
-"""
-Plotly chart builder functions
-"""
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
@@ -9,17 +6,12 @@ from plotly.subplots import make_subplots
 from app.dashboard.config import COLORS, CHART_HEIGHT, CHART_TEMPLATE
 
 def equity_curve(df):
-    """Plot equity curve with drawdown shading"""
     if df.empty:
         return go.Figure()
-
     equity = df["profit"].cumsum()
     peak = equity.expanding().max()
     drawdown = (equity - peak) / peak * 100
-
     fig = go.Figure()
-
-    # Equity curve
     fig.add_trace(go.Scatter(
         x=df["exit_time"],
         y=equity,
@@ -28,8 +20,6 @@ def equity_curve(df):
         fill=None,
         mode="lines",
     ))
-
-    # Drawdown shading
     fig.add_trace(go.Scatter(
         x=df["exit_time"],
         y=equity,
@@ -40,7 +30,6 @@ def equity_curve(df):
         mode="lines",
         showlegend=False,
     ))
-
     fig.update_layout(
         title="Equity Curve",
         xaxis_title="Date",
@@ -50,18 +39,14 @@ def equity_curve(df):
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
-
     return fig
 
 def drawdown_chart(df):
-    """Plot underwater/drawdown percentage"""
     if df.empty:
         return go.Figure()
-
     equity = df["profit"].cumsum()
     peak = equity.expanding().max()
     drawdown = (equity - peak) / peak * 100
-
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=df["exit_time"],
@@ -72,7 +57,6 @@ def drawdown_chart(df):
         fillcolor="rgba(255,68,68,0.3)",
         mode="lines",
     ))
-
     fig.update_layout(
         title="Drawdown % (Underwater)",
         xaxis_title="Date",
@@ -81,20 +65,14 @@ def drawdown_chart(df):
         template=CHART_TEMPLATE,
         hovermode="x unified",
     )
-
     return fig
 
 def rolling_performance(df, window=30):
-    """Plot rolling win rate and avg P&L"""
     if df.empty or len(df) < window:
         return go.Figure()
-
-    # Calculate rolling metrics
     rolling_wr = df["profit"].rolling(window).apply(lambda x: (x > 0).mean())
     rolling_avg = df["profit"].rolling(window).mean()
-
     fig = make_subplots(specs=[[{"secondary_y": True}]])
-
     fig.add_trace(
         go.Scatter(
             x=df["exit_time"],
@@ -105,7 +83,6 @@ def rolling_performance(df, window=30):
         ),
         secondary_y=False,
     )
-
     fig.add_trace(
         go.Scatter(
             x=df["exit_time"],
@@ -116,7 +93,6 @@ def rolling_performance(df, window=30):
         ),
         secondary_y=True,
     )
-
     fig.update_layout(
         title=f"Rolling Performance (Window = {window} Trades)",
         xaxis_title="Date",
@@ -125,21 +101,15 @@ def rolling_performance(df, window=30):
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
-
     fig.update_yaxes(title_text="Win Rate (%)", secondary_y=False)
     fig.update_yaxes(title_text="Avg P&L ($)", secondary_y=True)
-
     return fig
 
 def pnl_histogram(df):
-    """P&L distribution histogram"""
     if df.empty:
         return go.Figure()
-
-    fig = go.Figure()
-
-    # Histogram
     colors = [COLORS["positive"] if x > 0 else COLORS["negative"] for x in df["profit"]]
+    fig = go.Figure()
     fig.add_trace(go.Histogram(
         x=df["profit"],
         name="P&L Distribution",
@@ -147,16 +117,12 @@ def pnl_histogram(df):
         opacity=0.7,
         nbinsx=30,
     ))
-
-    # Mean/median lines
     mean_val = df["profit"].mean()
     median_val = df["profit"].median()
-
     fig.add_vline(x=mean_val, line_dash="solid", line_color=COLORS["primary"],
                   annotation_text=f"Mean: ${mean_val:.2f}", annotation_position="top")
     fig.add_vline(x=median_val, line_dash="dash", line_color=COLORS["secondary"],
                   annotation_text=f"Median: ${median_val:.2f}", annotation_position="bottom")
-
     fig.update_layout(
         title="P&L Distribution",
         xaxis_title="P&L ($)",
@@ -165,16 +131,12 @@ def pnl_histogram(df):
         template=CHART_TEMPLATE,
         bargap=0.05,
     )
-
     return fig
 
 def duration_histogram(df):
-    """Trade duration distribution"""
     if df.empty:
         return go.Figure()
-
     durations = (df["exit_time"] - df["entry_time"]).dt.total_seconds() / 60
-
     fig = go.Figure()
     fig.add_trace(go.Histogram(
         x=durations,
@@ -183,7 +145,6 @@ def duration_histogram(df):
         opacity=0.7,
         nbinsx=30,
     ))
-
     fig.update_layout(
         title="Trade Duration Distribution",
         xaxis_title="Duration (minutes)",
@@ -192,34 +153,23 @@ def duration_histogram(df):
         template=CHART_TEMPLATE,
         bargap=0.05,
     )
-
     return fig
 
-def pnl_by_category(df, category_col, title, color_map=None):
-    """Bar chart of P&L by category (instrument/session)"""
-    if df.empty:
+def pnl_by_category(df, category_col, title):
+    """
+    Bar chart of P&L by category.
+    Works even if 'ticket_id' is missing.
+    """
+    if df.empty or category_col not in df.columns:
         return go.Figure()
 
-    # Check if category column exists
-    if category_col not in df.columns:
-        return go.Figure()
-
-    # Validate column exists and has data
-    if category_col not in df.columns:
-        return go.Figure()
-
-    # Aggregate
-    agg = df.groupby(category_col).agg({
-        "profit": "sum",
-        "ticket_id": "count"
-    }).reset_index()
-
-    # If the column is missing, return empty figure
-    if agg.empty:
-        return go.Figure()
-
+    # Compute count per category
+    counts = df.groupby(category_col).size().reset_index(name='count')
+    # Compute sum of profit per category
+    profits = df.groupby(category_col)['profit'].sum().reset_index()
+    # Merge
+    agg = pd.merge(profits, counts, on=category_col)
     agg.columns = ["category", "profit", "count"]
-    agg["percentage"] = agg["profit"] / agg["profit"].sum() * 100
     agg["color"] = agg["profit"].apply(lambda x: COLORS["positive"] if x > 0 else COLORS["negative"])
 
     fig = go.Figure()
@@ -241,15 +191,11 @@ def pnl_by_category(df, category_col, title, color_map=None):
         template=CHART_TEMPLATE,
         showlegend=False,
     )
-
     return fig
 
 def heatmap_winrate(df, metric="win_rate"):
-    """Heatmap of instrument_type vs session"""
     if df.empty:
         return go.Figure()
-
-    # Create pivot table
     if metric == "win_rate":
         pivot = df.pivot_table(
             values="profit",
@@ -268,11 +214,8 @@ def heatmap_winrate(df, metric="win_rate"):
         )
         title = "P&L by Instrument & Session"
         zlabel = "P&L ($)"
-
-    # Convert to percentages for win rate
     if metric == "win_rate":
         pivot = pivot * 100
-
     fig = go.Figure(data=go.Heatmap(
         z=pivot.values,
         x=pivot.columns,
@@ -283,7 +226,6 @@ def heatmap_winrate(df, metric="win_rate"):
         textfont={"size": 10},
         hoverongaps=False,
     ))
-
     fig.update_layout(
         title=title,
         xaxis_title="Session",
@@ -291,36 +233,23 @@ def heatmap_winrate(df, metric="win_rate"):
         height=CHART_HEIGHT,
         template=CHART_TEMPLATE,
     )
-
     return fig
 
 def monthly_performance(df):
-    """Monthly performance bar chart"""
     if df.empty:
         return go.Figure()
 
+    if not pd.api.types.is_datetime64_any_dtype(df["entry_time"]):
+        df["entry_time"] = pd.to_datetime(df["entry_time"])
+
     df["month"] = df["entry_time"].dt.to_period("M").astype(str)
-    monthly = df.groupby("month").agg({
-        "profit": "sum",
-        "ticket_id": "count",
-        "profit": lambda x: (x > 0).mean()
-    }).reset_index()
-        # 1. Create a 'is_win' column first (assuming profit > 0 means a win)
-    df['is_win'] = (df['profit'] > 0).astype(int)
 
-    # 2. Group by month and calculate the 3 required metrics
-    monthly = df.groupby('month').agg({
-        'profit': 'sum',     # Total profit
-        'ticket_id': 'count',# Number of trades
-        'is_win': 'sum'      # Number of winning trades
-    }).reset_index()
+    monthly = df.groupby("month").agg(
+        pnl=("profit", "sum"),
+        trades=("ticket_id", "count"),
+        win_rate=("profit", lambda x: (x > 0).mean())
+    ).reset_index()
 
-    # 3. Now calculate the win_rate (Winning Trades / Total Trades)
-    monthly['win_rate'] = monthly['is_win'] / monthly['ticket_id']
-
-    # 4. Select only the columns we need and rename them correctly
-    monthly = monthly[['month', 'profit', 'ticket_id', 'win_rate']]
-    monthly.columns = ["month", "pnL", "trades", "win_rate"]
     monthly["win_rate"] = monthly["win_rate"] * 100
     monthly["color"] = monthly["pnl"].apply(lambda x: COLORS["positive"] if x > 0 else COLORS["negative"])
 
@@ -344,14 +273,11 @@ def monthly_performance(df):
         template=CHART_TEMPLATE,
         showlegend=False,
     )
-
     return fig
 
 def slippage_histogram(df):
-    """Slippage distribution"""
     if df.empty or "slippage" not in df.columns:
         return go.Figure()
-
     fig = go.Figure()
     fig.add_trace(go.Histogram(
         x=df["slippage"],
@@ -360,7 +286,6 @@ def slippage_histogram(df):
         opacity=0.7,
         nbinsx=30,
     ))
-
     fig.update_layout(
         title="Slippage Distribution",
         xaxis_title="Slippage",
@@ -369,20 +294,14 @@ def slippage_histogram(df):
         template=CHART_TEMPLATE,
         bargap=0.05,
     )
-
     return fig
 
 def backtest_comparison(df):
-    """Compare live vs backtest expected P&L"""
     if df.empty or "backtest_expected_pnl" not in df.columns:
         return go.Figure()
-
-    # Filter rows with backtest data
     valid = df.dropna(subset=["backtest_expected_pnl"])
-
     if valid.empty:
         return go.Figure()
-
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=valid["backtest_expected_pnl"],
@@ -396,8 +315,6 @@ def backtest_comparison(df):
         ),
         hovertemplate="Expected: $%{x:.2f}<br>Actual: $%{y:.2f}<extra></extra>",
     ))
-
-    # Add diagonal line (perfect match)
     max_val = max(valid["backtest_expected_pnl"].max(), valid["profit"].max())
     min_val = min(valid["backtest_expected_pnl"].min(), valid["profit"].min())
     fig.add_trace(go.Scatter(
@@ -407,7 +324,6 @@ def backtest_comparison(df):
         name="Perfect Match",
         line=dict(dash="dash", color=COLORS["secondary"]),
     ))
-
     fig.update_layout(
         title="Live vs Backtest Expected P&L",
         xaxis_title="Backtest Expected P&L ($)",
@@ -416,5 +332,4 @@ def backtest_comparison(df):
         template=CHART_TEMPLATE,
         showlegend=True,
     )
-
     return fig

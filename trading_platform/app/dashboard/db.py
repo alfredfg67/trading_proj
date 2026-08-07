@@ -1,55 +1,32 @@
-"""
-Database connection and query functions
-"""
 import pandas as pd
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 import streamlit as st
+import os
+from dotenv import load_dotenv
 from app.core.config import settings
 
-# Engine singleton
+try:
+    DB_URL = settings.DATABASE_URL
+except:
+    load_dotenv()
+    DB_URL = os.getenv("DATABASE_URL", "sqlite:///./trading.db")
+
 @st.cache_resource
 def get_engine():
-    """Create and cache database engine"""
-    try:
-        # Try to use settings from main app
-        db_url = settings.DATABASE_URL
-    except:
-        # Fallback to environment variable
-        import os
-        from dotenv import load_dotenv
-        load_dotenv()
-        db_url = os.getenv("DATABASE_URL", "sqlite:///./trading.db")
+    db_url = DB_URL.replace("+aiosqlite", "") if "aiosqlite" in DB_URL else DB_URL
+    return create_engine(db_url, echo=False)
 
-    # Convert sqlite+aiosqlite to sqlite for synchronous access
-    if "aiosqlite" in db_url:
-        db_url = db_url.replace("+aiosqlite", "")
-
-    engine = create_engine(db_url, echo=False)
-    return engine
-
-@st.cache_data(ttl=300)  # 5 minute cache
-def load_trades(
-    start_date=None,
-    end_date=None,
-    instrument_types=None,
-    sessions=None,
-    symbols=None,
-    strategies=None,
-    _engine=None
-):
-    """Load trades with filters applied"""
+@st.cache_data(ttl=300)
+def load_trades(start_date=None, end_date=None, instrument_types=None, sessions=None, symbols=None, strategies=None, _engine=None):
     try:
         engine = _engine or get_engine()
-
-        # Build query
         query = "SELECT * FROM trades WHERE 1=1"
         params = {}
 
         if start_date:
             query += " AND entry_time >= :start_date"
             params["start_date"] = start_date
-
         if end_date:
             query += " AND entry_time <= :end_date"
             params["end_date"] = end_date
@@ -79,11 +56,8 @@ def load_trades(
                 params[f"strat_{i}"] = strat
 
         query += " ORDER BY entry_time ASC"
-
-        # Execute
         df = pd.read_sql_query(text(query), engine, params=params)
 
-        # Convert timestamps
         for col in ["entry_time", "exit_time"]:
             if col in df.columns:
                 df[col] = pd.to_datetime(df[col])
@@ -93,31 +67,33 @@ def load_trades(
     except SQLAlchemyError as e:
         st.error(f"Database error: {str(e)}")
         return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Unexpected error loading trades: {str(e)}")
+        return pd.DataFrame()
 
 def get_filter_options(df):
-    """Get unique values for filter dropdowns"""
+    """Return unique values for filters, ensuring 'All' is always included for multiselect defaults."""
     if df.empty:
         return {
             "symbols": [],
-            "instrument_types": [],
-            "sessions": [],
-            "strategies": [],
+            "instrument_types": ["All"],
+            "sessions": ["All"],
+            "strategies": ["All"],
         }
 
-    return {
+    options = {
         "symbols": sorted(df["symbol"].unique().tolist()),
         "instrument_types": sorted(df["instrument_type"].unique().tolist()),
         "sessions": sorted(df["session"].unique().tolist()),
         "strategies": sorted(df["strategy_tag"].dropna().unique().tolist()) if "strategy_tag" in df.columns else [],
     }
 
-@st.cache_data(ttl=300)
-def get_date_range(_engine=None):
-    """Get min and max dates from trades table"""
-    engine = _engine or get_engine()
-    try:
-        query = "SELECT MIN(entry_time) as min_date, MAX(entry_time) as max_date FROM trades"
-        result = pd.read_sql_query(text(query), engine)
-        return result["min_date"].iloc[0], result["max_date"].iloc[0]
-    except:
-        return None, None
+    # Ensure "All" is always available in filter lists (for default values)
+    for key in ["instrument_types", "sessions", "strategies"]:
+        if key in options and options[key]:
+            if "All" not in options[key]:
+                options[key] = ["All"] + options[key]
+        elif key in options:
+            options[key] = ["All"]
+
+    return options
