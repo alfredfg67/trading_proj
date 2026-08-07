@@ -7,6 +7,7 @@ from app.api.v1.router import router as v1_router
 from app.core.database import engine, Base
 from app.services.order_processor import start_worker
 from app.dal.base import DatabaseError
+from app.services.mt5_sync import run_mt5_sync_periodically
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -37,6 +38,11 @@ async def database_exception_handler(request: Request, exc: DatabaseError):
         status_code=500,
         content={"detail": "Database error", "message": str(exc)}
     )
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ... existing code ...
+    asyncio.create_task(run_mt5_sync_periodically(interval_hours=24))
+    yield
 
 @app.get("/health")
 async def health():

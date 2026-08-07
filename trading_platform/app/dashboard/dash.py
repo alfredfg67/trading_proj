@@ -6,6 +6,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
+import requests  # <-- ADDED
 from app.dashboard import config, db, metrics, charts
 from app.dashboard.data_gen import generate_synthetic_trades
 
@@ -81,6 +82,25 @@ with st.sidebar:
     if st.button("🔄 Refresh Data", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
+
+    # --- MT5 Sync Button ---
+    if st.button("🔄 Sync MT5 History", use_container_width=True):
+        with st.spinner("Syncing with MT5..."):
+            try:
+                # Use the API endpoint (adjust if your API runs elsewhere)
+                response = requests.post("http://localhost:8000/api/v1/mt5/sync", timeout=60)
+                if response.status_code == 200:
+                    data = response.json()
+                    st.success(f"Synced {data.get('total', 0)} trades (inserted: {data.get('inserted', 0)}, updated: {data.get('updated', 0)})")
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.error(f"Sync failed: {response.status_code} - {response.text}")
+            except requests.exceptions.ConnectionError:
+                st.error("Could not connect to the API server. Is it running?")
+            except Exception as e:
+                st.error(f"Sync error: {str(e)}")
+
     st.caption(f"Data source: {'Database' if data_source == 'Database (Live)' else 'Synthetic'}")
 
 st.title("📊 Trading Performance Dashboard")
