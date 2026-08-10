@@ -184,8 +184,9 @@ async def sync_mt5_history(
                         )
                         updated += 1
                     else:
+                        # Ensure broker_account_id is set – default to 1 for now
+                        trade_data['broker_account_id'] = 1
                         await service.trades.create_trade(**trade_data)
-                        inserted += 1
 
                 # Commit after each batch to avoid huge transaction
                 await session.commit()

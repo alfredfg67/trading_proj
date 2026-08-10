@@ -8,6 +8,9 @@ from app.core.database import engine, Base
 from app.services.order_processor import start_worker
 from app.dal.base import DatabaseError
 from app.services.mt5_sync import run_mt5_sync_periodically
+from fastapi import FastAPI
+from app.core.rate_limit import limiter
+from slowapi.middleware import SlowAPIMiddleware
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,6 +25,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Trading Platform API", lifespan=lifespan)
 app.include_router(v1_router, prefix="/api/v1")
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

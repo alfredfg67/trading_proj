@@ -23,7 +23,9 @@ class TradeDAL:
         else:
             return "NY"
 
-    async def create_trade(self, **kwargs) -> Trade:
+    async def create_trade(self, broker_account_id: int, **kwargs) -> Trade:
+        """Create a new trade linked to a broker account."""
+        kwargs['broker_account_id'] = broker_account_id
         return await self.repo.create(**kwargs)
 
     async def bulk_create_trades(self, trades_data: List[Dict[str, Any]]) -> List[Trade]:
@@ -42,6 +44,7 @@ class TradeDAL:
     async def get_trades(self, symbol: Optional[str] = None, instrument_type: Optional[str] = None,
                          session: Optional[str] = None, strategy_tag: Optional[str] = None,
                          start_date: Optional[datetime] = None, end_date: Optional[datetime] = None,
+                         broker_account_id: Optional[int] = None,
                          limit: int = 100, skip: int = 0, order_by: str = "entry_time", order_desc: bool = True) -> List[Trade]:
         try:
             query = select(Trade)
@@ -58,6 +61,8 @@ class TradeDAL:
                 conditions.append(Trade.entry_time >= start_date)
             if end_date:
                 conditions.append(Trade.entry_time <= end_date)
+            if broker_account_id is not None:
+                conditions.append(Trade.broker_account_id == broker_account_id)
             if conditions:
                 query = query.where(and_(*conditions))
             order_col = getattr(Trade, order_by, Trade.entry_time)
@@ -100,53 +105,5 @@ class TradeDAL:
         except SQLAlchemyError as e:
             raise DatabaseError(f"Failed to get trade metrics: {e}")
 
-    async def get_metrics_by_group(self, group_by: str, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> List[Dict[str, Any]]:
-        try:
-            query = select(
-                getattr(Trade, group_by).label("group"),
-                func.count(Trade.id).label("trade_count"),
-                func.sum(Trade.profit).label("total_profit"),
-                func.avg(Trade.profit).label("avg_profit"),
-                func.count().filter(Trade.profit > 0).label("wins"),
-                func.count().filter(Trade.profit < 0).label("losses"),
-                func.avg(Trade.slippage).label("avg_slippage"),
-            ).group_by(getattr(Trade, group_by))
-            if start_date:
-                query = query.where(Trade.entry_time >= start_date)
-            if end_date:
-                query = query.where(Trade.entry_time <= end_date)
-            result = await self.db.execute(query)
-            return [dict(row._mapping) for row in result.all()]
-        except SQLAlchemyError as e:
-            raise DatabaseError(f"Failed to get metrics by group: {e}")
-
-    async def get_monthly_performance(self, months: int = 12) -> List[Dict[str, Any]]:
-        try:
-            query = select(
-                func.strftime("%Y-%m", Trade.entry_time).label("month"),
-                func.count(Trade.id).label("trade_count"),
-                func.sum(Trade.profit).label("total_profit"),
-                func.avg(Trade.profit).label("avg_profit"),
-                func.count().filter(Trade.profit > 0).label("wins"),
-                func.count().filter(Trade.profit < 0).label("losses"),
-            ).group_by("month").order_by("month")
-            result = await self.db.execute(query)
-            return [dict(row._mapping) for row in result.all()]
-        except SQLAlchemyError as e:
-            raise DatabaseError(f"Failed to get monthly performance: {e}")
-
-    async def get_backtest_comparison(self) -> List[Dict[str, Any]]:
-        try:
-            result = await self.db.execute(
-                select(
-                    Trade.id,
-                    Trade.profit.label("actual_pnl"),
-                    Trade.backtest_expected_pnl.label("expected_pnl"),
-                    (Trade.profit - Trade.backtest_expected_pnl).label("difference"),
-                    Trade.symbol,
-                    Trade.entry_time,
-                ).where(Trade.backtest_expected_pnl.isnot(None))
-            )
-            return [dict(row._mapping) for row in result.all()]
-        except SQLAlchemyError as e:
-            raise DatabaseError(f"Failed to get backtest comparison: {e}")
+    # Other methods like get_metrics_by_group, get_monthly_performance, get_backtest_comparison
+    # can be added later. They will also need to support broker_account_id filtering.

@@ -19,7 +19,7 @@ async def process_order(order_id: int):
         if not order or order.status != OrderStatus.PENDING:
             return
 
-        if random.random() < 1.0:   # 100% fill
+        if random.random() < 0.8:   # 80% fill
             exit_price = order.price * (1 + random.uniform(-0.01, 0.01))
             if order.side == "buy":
                 profit = (exit_price - order.price) * order.quantity
@@ -27,7 +27,13 @@ async def process_order(order_id: int):
                 profit = (order.price - exit_price) * order.quantity
 
             session = TradeDAL.detect_session(datetime.utcnow())
+
+            # HARDCODE broker_account_id = 1 for now (default account)
+            # This will be replaced in Phase 4 when user context is available
+            broker_account_id = 1
+
             trade = await service.trades.create_trade(
+                broker_account_id=broker_account_id,
                 order_id=order.id,
                 symbol=order.symbol,
                 direction=order.side,
@@ -37,7 +43,7 @@ async def process_order(order_id: int):
                 profit=round(profit, 2),
                 entry_time=datetime.utcnow(),
                 exit_time=datetime.utcnow(),
-                instrument_type="forex",
+                instrument_type="forex",   # You can improve detection later
                 session=session,
                 slippage=0.0,
                 commission=0.0,

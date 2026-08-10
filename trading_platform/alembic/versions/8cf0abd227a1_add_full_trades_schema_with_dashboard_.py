@@ -3,27 +3,18 @@
 Revision ID: 8cf0abd227a1
 Revises: 
 Create Date: 2026-08-05 00:00:00.000000
-
 """
 from alembic import op
 import sqlalchemy as sa
 
-
-# revision identifiers, used by Alembic.
 revision = '8cf0abd227a1'
 down_revision = None
 branch_labels = None
 depends_on = None
 
-
-def upgrade() -> None:
-    # Drop tables if they exist (to ensure a clean slate)
-    op.execute('DROP TABLE IF EXISTS orders')
-    op.execute('DROP TABLE IF EXISTS trades')
-    
+def upgrade():
     # Create orders table
-    op.create_table(
-        'orders',
+    op.create_table('orders',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('symbol', sa.String(), nullable=False),
         sa.Column('side', sa.String(), nullable=False),
@@ -32,13 +23,12 @@ def upgrade() -> None:
         sa.Column('status', sa.String(), nullable=False),
         sa.Column('created_at', sa.DateTime(), nullable=True),
         sa.Column('updated_at', sa.DateTime(), nullable=True),
-        sa.PrimaryKeyConstraint('id'),
+        sa.PrimaryKeyConstraint('id')
     )
     op.create_index('ix_orders_id', 'orders', ['id'], unique=False)
 
-    # Create trades table
-    op.create_table(
-        'trades',
+    # Create trades table with all columns
+    op.create_table('trades',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('ticket_id', sa.Integer(), nullable=True),
         sa.Column('order_id', sa.Integer(), nullable=True),
@@ -63,7 +53,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('id'),
         sa.ForeignKeyConstraint(['order_id'], ['orders.id'], name='fk_trades_order_id'),
     )
-    # Create indexes
+    # Indexes
     op.create_index('ix_trades_id', 'trades', ['id'], unique=False)
     op.create_index('ix_trades_ticket_id', 'trades', ['ticket_id'], unique=True)
     op.create_index('idx_trades_symbol_entry_time', 'trades', ['symbol', 'entry_time'])
@@ -71,7 +61,7 @@ def upgrade() -> None:
     op.create_index('idx_trades_session', 'trades', ['session'])
     op.create_index('idx_trades_strategy_tag', 'trades', ['strategy_tag'])
 
-def downgrade() -> None:
+def downgrade():
     # Drop indexes
     op.drop_index('idx_trades_strategy_tag', table_name='trades')
     op.drop_index('idx_trades_session', table_name='trades')
@@ -79,23 +69,6 @@ def downgrade() -> None:
     op.drop_index('idx_trades_symbol_entry_time', table_name='trades')
     op.drop_index('ix_trades_ticket_id', table_name='trades')
     op.drop_index('ix_trades_id', table_name='trades')
-
-    # Drop the table
+    # Drop tables
     op.drop_table('trades')
-
-    # Create orders table
-op.create_table(
-    'orders',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('symbol', sa.String(), nullable=False),
-    sa.Column('side', sa.String(), nullable=False),
-    sa.Column('quantity', sa.Float(), nullable=False),
-    sa.Column('price', sa.Float(), nullable=False),
-    sa.Column('status', sa.String(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.PrimaryKeyConstraint('id'),
-)
-op.create_index('ix_orders_id', 'orders', ['id'], unique=False)
-# inside your migration
-op.add_column('orders', sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP')))
+    op.drop_table('orders')
