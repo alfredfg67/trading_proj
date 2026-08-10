@@ -13,6 +13,10 @@ class Trade(Base):
     broker_account_id = Column(Integer, ForeignKey("broker_accounts.id"), nullable=False)
     broker_account = relationship("BrokerAccount", backref="trades")
 
+    volume = Column(Float, nullable=True)
+    open_time = Column(DateTime, nullable=True)
+    close_time = Column(DateTime, nullable=True)
+
     symbol = Column(String, nullable=False)
     instrument_type = Column(String, nullable=False)
     direction = Column(String, nullable=False)

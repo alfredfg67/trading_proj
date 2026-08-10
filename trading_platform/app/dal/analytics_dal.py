@@ -1,14 +1,21 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, and_
 from datetime import datetime
-from app.models.trades import Trade
-from app.dal.base import DatabaseError
 import numpy as np
+
+from app.models.trades import Trade
+from app.models.broker_account import BrokerAccount
+from app.models.broker import Broker
+from app.models.user import User
+from app.dal.base import DatabaseError
+
 
 class AnalyticsDAL:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    # ─── Existing Methods ──────────────────────────────────────────
 
     async def get_trade_performance(self) -> Dict[str, Any]:
         try:
@@ -158,3 +165,55 @@ class AnalyticsDAL:
             }
         except Exception as e:
             raise DatabaseError(f"Failed to get streaks: {e}")
+
+    # ─── NEW: User‑Scoped Metrics ──────────────────────────────────
+
+    async def get_user_metrics(
+        self,
+        user_id: int,
+        broker_account_id: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Get aggregated trade metrics for a specific user, optionally filtered
+        to a single broker account.
+        """
+        try:
+            # Build the query with joins to enforce user ownership
+            query = select(
+                func.count(Trade.id).label("trade_count"),
+                func.sum(Trade.profit).label("net_pnl"),
+                func.avg(Trade.profit).label("avg_pnl"),
+                func.max(Trade.profit).label("max_win"),
+                func.min(Trade.profit).label("max_loss"),
+                func.sum(Trade.lot_size).label("total_volume"),
+                func.count().filter(Trade.profit > 0).label("wins"),
+                func.count().filter(Trade.profit < 0).label("losses"),
+            )
+
+            # Join chain: Trade → BrokerAccount → Broker → User
+            query = query.join(BrokerAccount, Trade.broker_account_id == BrokerAccount.id)
+            query = query.join(Broker, BrokerAccount.broker_id == Broker.id)
+            query = query.join(User, Broker.user_id == User.id)
+
+            # Always filter by user_id
+            conditions = [User.id == user_id]
+            if broker_account_id is not None:
+                conditions.append(Trade.broker_account_id == broker_account_id)
+
+            if conditions:
+                query = query.where(and_(*conditions))
+
+            result = await self.db.execute(query)
+            row = result.one()
+            return {
+                "trade_count": row.trade_count or 0,
+                "net_pnl": row.net_pnl or 0.0,
+                "avg_pnl": row.avg_pnl or 0.0,
+                "max_win": row.max_win or 0.0,
+                "max_loss": row.max_loss or 0.0,
+                "total_volume": row.total_volume or 0.0,
+                "wins": row.wins or 0,
+                "losses": row.losses or 0,
+            }
+        except Exception as e:
+            raise DatabaseError(f"Failed to get user metrics: {e}")
