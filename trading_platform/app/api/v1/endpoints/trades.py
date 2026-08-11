@@ -1,28 +1,46 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from typing import List
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List, Optional
+from datetime import datetime
 
-# Imports from your project
 from app.core.database import get_db
-from app.models.trades import Trade
-from app.schemas.trade import TradeResponse  # Your updated schema from Step 1
+from app.api.v1.deps import get_current_user
+from app.models.user import User
+from app.schemas.trade import TradeResponse
+from app.dal.trade_dal import TradeDAL
+from app.dal.base import DatabaseError
 
 router = APIRouter()
 
 @router.get("/", response_model=List[TradeResponse])
-def list_trades(
-    limit: int = 5000, 
-    db: Session = Depends(get_db)
+async def list_trades(
+    account_id: Optional[int] = None,
+    symbol: Optional[str] = None,
+    instrument_type: Optional[str] = None,
+    session: Optional[str] = None,
+    strategy_tag: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    limit: int = 5000,
+    skip: int = 0,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Fetch a list of trades from the database.
-    """
+    """Fetch trades belonging to the authenticated user."""
     try:
-        # Do NOT use .load_only() or .with_entities() here.
-        # Using .query(Trade).limit(limit).all() ensures all mapped columns 
-        # defined in models/trades.py are fetched.
-        trades = db.query(Trade).limit(limit).all()
+        dal = TradeDAL(db)
+        trades = await dal.get_trades(
+            user_id=current_user.id,
+            broker_account_id=account_id,
+            symbol=symbol,
+            instrument_type=instrument_type,
+            session=session,
+            strategy_tag=strategy_tag,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            skip=skip,
+        )
         return trades
-    except Exception as e:
-        # A good practice to handle query errors gracefully
+    except DatabaseError as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch trades: {str(e)}")

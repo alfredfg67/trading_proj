@@ -20,6 +20,7 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     asyncio.create_task(start_worker())
+    asyncio.create_task(run_mt5_sync_periodically(interval_hours=24))
     logger.info("Application startup complete")
     yield
 
@@ -43,11 +44,6 @@ async def database_exception_handler(request: Request, exc: DatabaseError):
         status_code=500,
         content={"detail": "Database error", "message": str(exc)}
     )
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # ... existing code ...
-    asyncio.create_task(run_mt5_sync_periodically(interval_hours=24))
-    yield
 
 @app.get("/health")
 async def health():

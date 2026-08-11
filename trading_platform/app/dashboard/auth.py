@@ -20,13 +20,12 @@ def login(email: str, password: str) -> bool:
             st.session_state.token_expiry = datetime.utcnow() + timedelta(minutes=30)  # adjust as needed
             # Fetch user info (optional) – we can get role from token or from /users/me endpoint
             # For simplicity, decode token to get role and user_id
-            try:
-                import jwt
-                payload = jwt.decode(data["access_token"], options={"verify_signature": False})
-                st.session_state.user_id = payload.get("sub")
-                st.session_state.role = payload.get("role", "user")
-            except:
-                pass
+        try:
+            payload = jwt.decode(data["access_token"], key="", options={"verify_signature": False})
+            st.session_state.user_id = payload.get("sub")
+            st.session_state.role = payload.get("role", "user")
+        except Exception as e:
+            st.warning(f"Could not decode session info: {e}")
             return True
         else:
             st.error(f"Login failed: {resp.json().get('detail', 'Unknown error')}")
